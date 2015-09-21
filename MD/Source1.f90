@@ -4,7 +4,8 @@
     implicit none
 
     real h,m,sx,sy,sz,r0,a1,a0,p,xi,q,nav,kb,rs,ekin,etot,epot,ebound,er,v,kbt,betta,qu
-    real dxt,dyt,dzt,drt,sigma,t,t0,Ron,Roff,obrez,proizv_obrez,pexp,qexp,vscal,sigma1,R,Rf, KineticEnergy
+    real dxt,dyt,dzt,drt,sigma,t,t0,Ron,Roff,pexp,qexp,vscal,sigma1,R,Rf
+    real kinetic_energy, cut_off, cut_off_div
     real x(4000),xt(4000),y(4000),yt(4000),z(4000),zt(4000)
     real vx(4000),vxt(4000),vy(4000),vyt(4000),vz(4000),vzt(4000)
     real ax(4000),axt(4000),ay(4000),ayt(4000),az(4000),azt(4000)
@@ -69,9 +70,9 @@
     qu=1.0
     Rf=0.01
 
-    call Maxwell(natom,vx,sigma)
-    call Maxwell(natom,vy,sigma)
-    call Maxwell(natom,vz,sigma)
+    call maxwell(natom,vx,sigma)
+    call maxwell(natom,vy,sigma)
+    call maxwell(natom,vz,sigma)
     write (8,*) ";epot;ekin;etot"
     write (11,*) ";t"   
     !================================Начало эволюции системы=============================================================================================
@@ -92,10 +93,10 @@
             fz(i)=0
         end do
         
-        call Verlett(natom,x,y,z,vx,vy,vz,ax,ay,az,h,sx,sy,sz)
-        call Pairs(natom,x,y,z,sx,sy,sz,dr,dx,dy,dz,ip,jp,np,Roff)
-        call Energy(natom,np,ip,jp,Ron,Roff,xi,q,r0,a1,a0,p,dr,Eba,er,ebound)
-        call Force(np, ip, jp, Ron, Roff, q, xi, dr, r0, a1, p, a0, Eba, qexp1, pexp1, dx, dy, dz, fx, fy, fz)
+        call verlet_coords(natom,x,y,z,vx,vy,vz,ax,ay,az,h,sx,sy,sz)
+        call pairs(natom,x,y,z,sx,sy,sz,dr,dx,dy,dz,ip,jp,np,Roff)
+        call energy(natom,np,ip,jp,Ron,Roff,xi,q,r0,a1,a0,p,dr,Eba,er,ebound)
+        call force(np, ip, jp, Ron, Roff, q, xi, dr, r0, a1, p, a0, Eba, qexp1, pexp1, dx, dy, dz, fx, fy, fz)
         !==========================Расчёт ускорений и скоростей на шаге t+dt=============================================================================
         do i=1,natom
             ax(i)=fx(i)/m
@@ -112,7 +113,7 @@
 
         end do
         
-        ekin = KineticEnergy(natom, vx, vy, vz)
+        ekin = kinetic_energy(natom, vx, vy, vz)
 
         t=ekin*1e-20
         t=1.05e-25*t/2000/2
@@ -139,7 +140,7 @@
     end program prog
     
 
-    function obrez(r,Ron,Roff) result(res)
+    function cut_off(r,Ron,Roff) result(res)
     real r,Ron,Roff,res
 
     if (Ron==Roff) then
@@ -163,7 +164,7 @@
     end if
     end function
     
-    function KineticEnergy(natom, vx, vy, vz) result(Energy)
+    function kinetic_energy(natom, vx, vy, vz) result(Energy)
     real vx(4000), vy(4000), vz(4000), Energy
     integer natom
     
@@ -176,7 +177,7 @@
     end function
     
     
-    function proizv_obrez(r,Ron,Roff) result(res)
+    function cut_off_div(r,Ron,Roff) result(res)
     real r,Ron,Roff,res
 
     if (Ron==Roff) then
@@ -191,7 +192,7 @@
 
     end function
 
-    subroutine Verlett(natom,x,y,z,vx,vy,vz,ax,ay,az,h,sx,sy,sz)
+    subroutine verlet_coords(natom,x,y,z,vx,vy,vz,ax,ay,az,h,sx,sy,sz)
     integer i,natom
     real x(4000),y(4000),z(4000),vx(4000),vy(4000),vz(4000)
     real ax(4000),ay(4000),az(4000),sx,sy,sz,h
@@ -209,7 +210,7 @@
     return
     end
 
-    subroutine Pairs(natom,x,y,z,sx,sy,sz,dr,dx,dy,dz,ip,jp,np,Roff)
+    subroutine pairs(natom,x,y,z,sx,sy,sz,dr,dx,dy,dz,ip,jp,np,Roff)
     integer natom,np,i ,j
     real x(4000),y(4000),z(4000)
     real sx,sy,sz,Roff,drt
@@ -245,7 +246,7 @@
     return
     end
 
-    subroutine Energy(natom, np,ip,jp,Ron,Roff,xi,q,r0,a1,a0,p,dr,Eba,er,ebound)
+    subroutine energy(natom, np,ip,jp,Ron,Roff,xi,q,r0,a1,a0,p,dr,Eba,er,ebound)
     integer natom, np,i,ip(200000),jp(200000)
     real Ron,Roff,xi,q,r0,a1,a0,p,ebound,er
     real Eba(4000)
@@ -253,7 +254,7 @@
     !==========================Расчёт энергий=============================================================================================
 
     do i=1,np
-        w(i) = obrez(dr(i),Ron,Roff)
+        w(i) = cut_off(dr(i),Ron,Roff)
         qexp1(i)=-(xi**2)*exp(-2*q*((dr(i)/r0)-1))
         pexp1(i)=(a1*(dr(i)/r0-1)+a0)*exp(-p*((dr(i)/r0)-1))
         Eba(ip(i))=Eba(ip(i))-qexp1(i)*w(i)
@@ -269,7 +270,7 @@
     return
     end
     
-    subroutine Force(np, ip, jp, Ron, Roff, q, xi, dr, r0, a1, p, a0, Eba, qexp1, pexp1, dx, dy, dz, fx, fy, fz)
+    subroutine force(np, ip, jp, Ron, Roff, q, xi, dr, r0, a1, p, a0, Eba, qexp1, pexp1, dx, dy, dz, fx, fy, fz)
     real dw(200000), qexp, pexp, f(200000)
     !=========================input=======================================================================================================
     integer np, ip(200000), jp(200000)
@@ -280,7 +281,7 @@
 
     !==========================Расчёт сил=================================================================================================
     do i=1,np
-        dw(i)=proizv_obrez(dr(i),Ron,Roff)
+        dw(i)=cut_off_div(dr(i),Ron,Roff)
         qexp=-(q*xi**2)*exp(-2*q*((dr(i)/r0)-1))
         pexp=(a1*p*(dr(i)/r0-1)+a0*p-a1)*exp(-p*((dr(i)/r0)-1))
 
@@ -300,7 +301,7 @@
     end
     
     
-    subroutine Maxwell(n,x,sigma)
+    subroutine maxwell(n,x,sigma)
     implicit real (a-h,o-z)
     dimension x(n)
     real sigma
