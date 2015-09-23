@@ -3,8 +3,8 @@
 
     implicit none
 
-    real h,m,sx,sy,sz,r0,a1,a0,p,xi,q,nav,kb,rs,ekin,etot,epot,ebound,er,v,kbt,betta,qu
-    real dxt,dyt,dzt,drt,sigma,t,t0,Ron,Roff,pexp,qexp,vscal,sigma1,R,Rf
+    real h,m,sx,sy,sz,r0,a1,a0,p,xi,q,nav,kb,rs,ekin,etot,epot,ebound,er,v,kbt,tau,qu
+    real dxt,dyt,dzt,drt,sigma,Ron,Roff,pexp,qexp,vscal,sigma1,R,Rf
     real kinetic_energy, cut_off, cut_off_div
     real x(4000),xt(4000),y(4000),yt(4000),z(4000),zt(4000)
     real vx(4000),vxt(4000),vy(4000),vyt(4000),vz(4000),vzt(4000)
@@ -12,9 +12,8 @@
     real Eba(4000),fx(4000),fy(4000),fz(4000)
     real dy(200000),dz(200000),dx(200000),dr(200000),pexp1(200000),qexp1(200000)
     real fr(200000),fb(200000),f(200000),w(200000),dw(200000)
-    real Vmax,dVmax,vkv,Vkvmax,dVkvmax,mxx(20000),mxy(20000),mxz(20000),mxv(20000)
-    integer i,j,k,natom,np,ip(200000),jp(200000),isrt(4000),nstat,flag,count,iscal,count1
-    integer jx,jy,jz,jv
+    real(8) t,t_ref
+    integer i,j,k,natom,np,ip(200000),jp(200000),isrt(4000),nstat,count,iscal,count1
 
     open(8,file="Result.csv")
     !open(9,file="InputRelax.txt")
@@ -22,63 +21,67 @@
     open(10,file="Output.csv")
     open(11,file="Temperature.csv")
     open(12,file="Velocity.csv")
+    open(13, file = "Statistics.csv")
 
-    natom=2000
-    nstat=0
-    iscal=100
+    natom = 2000
+    nstat = 0
+    iscal = 100
     
-    do i=1,natom
-        read(9,*) x(i),y(i),z(i),vx(i),vy(i),vz(i),isrt(i)
+    do i = 1, natom
+        read(9,*) x(i), y(i), z(i), vx(i), vy(i), vz(i), isrt(i)
     end do
 
-    do i=1,natom
-        ax(i)=0
-        ay(i)=0
-        az(i)=0
+    do i = 1, natom
+        ax(i) = 0
+        ay(i) = 0
+        az(i) = 0
     end do
     
     !====================Константы и параметры==============================================================================================
-    h=1.0e-16
-    nav=6.02e23
-    kb=1.38e-23
-    kbt=8.617e-5
-    m=63.55
-    m=m*1.e-3/nav
-    t0=0.0
-    sigma=1e10*sqrt(kb*t0/m)
-    m=m/16
-    Ron=6.0
-    Roff=7.0
-    sx=36.15
-    sy=36.15
-    sz=32.535
-    a1=0.0
-    a0=0.0854
-    p=10.939
-    r0=2.5563
-    xi=1.2243
-    q=2.2799
-    count=0
-    count1=0
-    Vmax = -2e3
-    dVmax = 0.2
-    Vkvmax = 0.0
-    dVkvmax = 1e11
-    betta=1e12
-    t=t0
-    sigma1=0d0
-    qu=1.0
-    Rf=0.01
-
+    h = 1.0e-14
+    nav = 6.02e23
+    kb = 1.38e-23
+    kbt = 8.617e-5
+    m = 63.55 * 1.e-3 / nav
+    t_ref = 300.0
+    sigma = sqrt(kb * t_ref / m)
+ 
+    Ron = 6.0
+    Roff = 7.0
+    sx = 36.15
+    sy = 36.15
+    sz = 32.535
+    a1 = 0.0
+    a0 = 0.0854
+    p = 10.939
+    r0 = 2.5563
+    xi = 1.2243
+    q = 2.2799
+    tau = 1e-12
+    sigma1 = 0d0
+    qu = 1.0
+    Rf = 0.01
+    count1 = 0
+    count =  0
+    
     call maxwell(natom,vx,sigma)
     call maxwell(natom,vy,sigma)
     call maxwell(natom,vz,sigma)
+    
+    do i = 1, natom
+        vx(i) = vx(i) * 1e10
+        vy(i) = vy(i) * 1e10
+        vz(i) = vz(i) * 1e10
+    end do
+
     write (8,*) ";epot;ekin;etot"
     write (11,*) ";t"   
+    write(13, *) ";vx;vy;vz"
     !================================Начало эволюции системы=============================================================================================
-    flag=1
-    do k=1,100
-        print *, k
+
+    do k=1,10000
+        print *, '==============================================='
+        print *, 'Step number', k
 
         do i=1,np
             ip(i)=0
@@ -93,36 +96,43 @@
             fz(i)=0
         end do
         
-        call verlet_coords(natom,x,y,z,vx,vy,vz,ax,ay,az,h,sx,sy,sz)
-        call pairs(natom,x,y,z,sx,sy,sz,dr,dx,dy,dz,ip,jp,np,Roff)
-        call energy(natom,np,ip,jp,Ron,Roff,xi,q,r0,a1,a0,p,dr,Eba,er,ebound)
+        call verlet_coords(natom, x, y, z, vx, vy, vz, ax, ay, az, h, sx, sy, sz)
+        call pairs(natom, x, y, z, sx, sy, sz, dr, dx, dy, dz, ip, jp, np, Roff)
+        call energy(natom, np, ip, jp, Ron, Roff, xi, q, r0, a1, a0, p, dr, Eba, er, ebound)
         call force(np, ip, jp, Ron, Roff, q, xi, dr, r0, a1, p, a0, Eba, qexp1, pexp1, dx, dy, dz, fx, fy, fz)
-        !==========================Расчёт ускорений и скоростей на шаге t+dt=============================================================================
-        do i=1,natom
-            ax(i)=fx(i)/m
-            ay(i)=fy(i)/m
-            az(i)=fz(i)/m
+        call verlet_velocity(natom, m, fx, fy, fz, vx, vy, vz, h, axt, ayt, azt, ax, ay, az)
 
-            vx(i)=vx(i)+0.5*(axt(i)+ax(i))*h
-            vy(i)=vy(i)+0.5*(ayt(i)+ay(i))*h
-            vz(i)=vz(i)+0.5*(azt(i)+az(i))*h
-
-            axt(i)=ax(i)
-            ayt(i)=ay(i)
-            azt(i)=az(i)
-
-        end do
         
-        ekin = kinetic_energy(natom, vx, vy, vz)
-
-        t=ekin*1e-20
-        t=1.05e-25*t/2000/2
-        t=t*2/3/1.38e-23
-        ekin=0.5*ekin*m
+        count = count + 1
+        if (count.eq.100) then
+            count = 0
+            do i=1,natom
+                write (13,*) ";",vx(i),";",vy(i),";",vz(i)
+            end do
+        end if
+        
+        ekin = kinetic_energy(natom, m, vx, vy, vz)
+       
+        t = 2 * ekin / (3 * kbt) / natom
+        print *, 'Temperature = ', t, ' K'
+        
         epot=er-ebound
         etot=epot+ekin
 
         write (11,*) ";",t        
+        !count1 = count1 + 1
+        !if (count1.eq.iscal) then
+            !count1 = 0
+            !call thermo_scale(natom, vx, vy, vz, t, t_ref)
+        !end if
+        
+        !call thermo_andersen(natom, vx, vy, vz, t_ref, Rf, m)
+        call thermo_berendsen(natom, vx, vy, vz, t_ref, t, tau, h)
+        
+        
+        print *, 'Potential energy = ', epot, ' eV'
+        print *, 'Kinetic energy = ', ekin, ' eV'
+        print *, 'Full energy = ', etot, ' eV'
         write (8,*) ";",epot,";",ekin,";",etot
         
         ekin=0
@@ -138,6 +148,7 @@
     end do
 
     end program prog
+    
     
 
     function cut_off(r,Ron,Roff) result(res)
@@ -164,8 +175,8 @@
     end if
     end function
     
-    function kinetic_energy(natom, vx, vy, vz) result(Energy)
-    real vx(4000), vy(4000), vz(4000), Energy
+    function kinetic_energy(natom, m, vx, vy, vz) result(Energy)
+    real vx(4000), vy(4000), vz(4000), Energy, m
     integer natom
     
     Energy = 0
@@ -173,6 +184,8 @@
     do i = 1, natom
         Energy = Energy + vx(i) ** 2 + vy(i) ** 2 + vz(i) ** 2
     end do
+    
+    Energy = 0.5 * Energy * m / 16
     
     end function
     
@@ -300,16 +313,105 @@
     return
     end
     
+    subroutine verlet_velocity(natom, m, fx, fy, fz, vx, vy, vz, h, axt, ayt, azt, ax, ay, az)
+    integer natom
+    real h, m
+    real fx(4000), fy(4000), fz(4000), vx(4000), vy(4000), vz(4000)
+    real ax(4000), ay(4000), az(4000), axt(4000), ayt(4000), azt(4000)
+    !==========================Расчёт ускорений и скоростей на шаге t+dt=========================================================================
+    do i=1,natom
+        ax(i)=fx(i)/m * 16
+        ay(i)=fy(i)/m * 16
+        az(i)=fz(i)/m * 16
+
+        vx(i)=vx(i)+0.5*(axt(i)+ax(i))*h
+        vy(i)=vy(i)+0.5*(ayt(i)+ay(i))*h
+        vz(i)=vz(i)+0.5*(azt(i)+az(i))*h
+
+        axt(i)=ax(i)
+        ayt(i)=ay(i)
+        azt(i)=az(i)
+
+    end do
+    
+    return
+    end
+    
     
     subroutine maxwell(n,x,sigma)
     implicit real (a-h,o-z)
     dimension x(n)
-    real sigma
+    real sigma, pi
+    pi = 3.1415
     do i=1,n,2
         call random_number (u1)
         call random_number (u2)
-        x(i)=sigma*cos(2*3.1415*u1)*sqrt(-2*log(u2))
-        x(i+1)=sigma*sin(2*3.1415*u1)*sqrt(-2*log(u2))
+        x(i)=sigma*cos(2*pi*u1)*sqrt(-2*log(u2))
+        x(i+1)=sigma*sin(2*pi*u1)*sqrt(-2*log(u2))
     end do
+    return
+    end
+!======================================Термостаты===============================================================================================
+    
+    subroutine thermo_scale(natom, vx, vy, vz, t, t_ref)
+    integer natom
+    real vx(4000), vy(4000), vz(4000), scale
+    real(8) t_ref, t
+  
+
+    scale = sqrt(t_ref / t)
+
+    do i = 1, natom
+        vx(i) = vx(i) * scale
+        vy(i) = vy(i) * scale
+        vz(i) = vz(i) * scale
+    end do
+
+    return
+    end
+    
+    
+    subroutine thermo_andersen(natom, vx, vy, vz, t_ref, Rf, m)
+    integer natom
+    real vx(4000), vy(4000), vz(4000), Rf, u1, u2, sigma, kb, R, m, pi
+    real(8) t_ref
+    kb = 1.38e-23
+    pi = 3.1415
+    sigma = sqrt(kb * t_ref / m)
+    
+    do i = 1, natom
+        call random_number (R)
+        if (R.lt.Rf) then
+            call random_number (u1)
+            call random_number (u2)
+            vx(i)=sigma*cos(2*pi*u1)*sqrt(-2*log(u2)) * 1e10
+            
+            call random_number (u1)
+            call random_number (u2)
+            vy(i)=sigma*cos(2*pi*u1)*sqrt(-2*log(u2)) * 1e10
+            
+            call random_number (u1)
+            call random_number (u2)
+            vz(i)=sigma*cos(2*pi*u1)*sqrt(-2*log(u2)) * 1e10
+        end if
+    end do
+    
+    return
+    end
+    
+    
+    subroutine thermo_berendsen(natom, vx, vy, vz, t_ref, t, tau, h)
+    integer natom
+    real vx(4000), vy(4000), vz(4000), tau, h, lambda
+    real(8) t, t_ref
+    
+    lambda = 1 + h / (2 * tau) * (t_ref / t - 1)
+    
+    do i = 1, natom
+        vx(i) = vx(i) * lambda
+        vy(i) = vy(i) * lambda
+        vy(i) = vy(i) * lambda
+    end do
+    
     return
     end
